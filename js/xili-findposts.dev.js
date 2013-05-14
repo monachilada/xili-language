@@ -1,20 +1,31 @@
-
+// adapted for 3.5.x + - 2.8.8 - adapted from media.js
 var findPosts;
 (function($){
 	findPosts = {
 		open : function(af_name, af_val) {
-			var st = document.documentElement.scrollTop || $(document).scrollTop();
+			var st = document.documentElement.scrollTop || $(document).scrollTop(),
+				overlay = $( '.ui-find-overlay' );
 
+			if ( overlay.length == 0 ) {
+				$( 'body' ).append( '<div class="ui-find-overlay"></div>' ); 
+				findPosts.overlay();
+			}
+
+			overlay.show();
+			
 			if ( af_name && af_val ) {
 				$('#affected').attr('name', af_name).val(af_val);
 			}
 			$('#find-posts').show().draggable({
 				handle: '#find-posts-head'
-			}).css({'top':st - 100 + 'px','left':'50%','marginLeft':'-70px'}); // xili place new
+			}).css({ 'z-index': '1000', 'top':st - 100 + 'px','left':'50%','marginLeft':'-170px'}); // xili place new
 
 			$('#find-posts-input').focus().keyup(function(e){
 				if (e.which == 27) { findPosts.close(); } // close on Escape
 			});
+			
+			// Pull some results up by default
+			findPosts.send();
 
 			return false;
 		},
@@ -22,6 +33,15 @@ var findPosts;
 		close : function() {
 			$('#find-posts-response').html('');
 			$('#find-posts').draggable('destroy').hide();
+			$( '.ui-find-overlay' ).hide();
+		},
+		
+		overlay : function() {
+			$( '.ui-find-overlay' ).css(
+				{ 'z-index': '999', 'width': $( document ).width() + 'px', 'height': $( document ).height() + 'px' }
+			).on('click', function () {
+				findPosts.close();
+			});
 		},
 		
 		choose : function() { // xili
@@ -29,6 +49,8 @@ var findPosts;
 			linked = $('input[name="found_post_id"]:checked').val();
 			$('#xili_language_lang-'+lang).val( linked );
 			$('#find-posts').draggable('destroy').hide();
+			$( '.ui-find-overlay' ).hide();
+			
 		},
 
 		send : function() {
@@ -39,6 +61,10 @@ var findPosts;
 			};
 
 			var selectedItem;
+			
+			spinner = $( '.find-box-search .spinner' );
+
+			spinner.show();
 			//xili - $("input[@name='itemSelect[]']:checked").each(function() { selectedItem = $(this).val() });
 			post['post_type'] = $('#find-posts-what').val(); //selectedItem;
 
@@ -65,6 +91,11 @@ var findPosts;
 			}
 			r = r.responses[0];
 			$('#find-posts-response').html(r.data);
+			
+			// Enable whole row to be clicked
+			$( '.found-posts td' ).on( 'click', function () {
+				$( this ).parent().find( '.found-radio input' ).prop( 'checked', true );
+			});
 		},
 
 		error : function(r) {
@@ -101,5 +132,8 @@ var findPosts;
 				}
 			});
 		});
+	});
+	$(window).resize(function() {
+		findPosts.overlay();
 	});
 })(jQuery);

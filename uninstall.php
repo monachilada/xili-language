@@ -11,7 +11,7 @@
 
 
 if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) || is_multisite() ) {// must done site by site 
-	echo 'impossible to erase plugin in multisite mode';
+	echo 'Impossible to erase plugin settings in multisite mode - need to done site by site before erasing folder !';
 	exit();
 }
 // check if delete_settings is set 

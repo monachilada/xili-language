@@ -3,13 +3,14 @@
 Plugin Name: xili-xl-bbp-addon
 Plugin URI: http://dev.xiligroup.com
 Description: add multilingual functions and features to bbPress (Localized forums). Delivered in xili-language package. If option activated, bbPress default theme will use bbpress.css in your theme directory.
-Version: 2.8.7
+Version: 2.8.8
 Author: MS
 Author URI: http://dev.xiligroup.com
 */
 /*
 
 Changelog:
+2.8.8 - 20130420 - Filter for bbPress 2.3
 2.8.6 - 20130322 - Maintenance release
 2.8.5 - 20130304 - Maintenance release
 2.8.4.3 - 20130222 - Add help tag in settings - tested functions included inside class
@@ -22,7 +23,7 @@ Changelog:
 
 */
 
-define('XILIXLBBPADDON_VER','2.8.7');
+define('XILIXLBBPADDON_VER','2.8.8');
 
 class xili_xl_bbp_addon {
 	
@@ -457,7 +458,10 @@ function xili_xl_bbp_lang_init ( ) {
 function xili_bbp_admin_side_locale ( $locale = 'en_US', $domain = 'bbpress' ) {
 	if ( in_array ( $domain, array( 'bbpress' , 'jetpack' ) ) ) {
 		
+		
+		if ( class_exists( 'bbPress') ) remove_action( 'set_current_user', 'bbp_setup_current_user' ); // 2.8.8
 		$locale = get_user_option( 'user_locale' ); 
+		if ( class_exists( 'bbPress') ) add_action( 'set_current_user', 'bbp_setup_current_user', 10 );
 		
 			if ( empty( $locale ) ) {
 				$locale = ( defined( 'WPLANG' ) ) ? WPLANG : 'en_US';
@@ -472,7 +476,7 @@ function xili_bbp_admin_side_locale ( $locale = 'en_US', $domain = 'bbpress' ) {
 			}
 			
 			unload_textdomain( 'jetpack' );
-			error_log ( '---->>>'. WP_PLUGIN_DIR.'/jetpack/languages/jetpack-'.$locale.'.mo'  );
+			//error_log ( '---->>>'. WP_PLUGIN_DIR.'/jetpack/languages/jetpack-'.$locale.'.mo'  );
 			load_textdomain( 'jetpack', WP_PLUGIN_DIR.'/jetpack/languages/jetpack-'.$locale.'.mo' );
 	}
 	

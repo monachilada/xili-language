@@ -5,11 +5,11 @@
 the name of plugin was xili-language widget now it is a part of xili-language plugin. 
 Add optional widgets to display list of languages in the sidebar or recent #comments and recents posts selected according current language. xili-language plugin must be activated!
 # Author is dev.xiligroup.com - MS
-# Version is 2.4.0
+# Version is 2.8.8
 # Author URI is http://dev.xiligroup.com
 # License is GPLv2
 */
-
+# 130502 - 2.8.8 - titles of widgets
 # 130317 - 2.8.6 - Type language list translatable
 # 111210 - 2.4.0 - clean notices
 # 111016 - 2.2.3 - clean recent posts
@@ -54,7 +54,7 @@ class xili_Widget_Recent_Posts extends WP_Widget {
 
 	function xili_Widget_Recent_Posts() {
 		$widget_ops = array('classname' => 'xili_widget_recent_entries', 'description' => __( "The most recent posts on your blog by xili-language",'xili-language-widget').' © v. '.XILILANGUAGE_VER );
-		$this->WP_Widget('xili-recent-posts', __('List of recent posts','xili-language-widget'), $widget_ops);
+		$this->WP_Widget('xili-recent-posts', '[©xili] ' . __('List of recent posts','xili-language-widget'), $widget_ops);
 		$this->alt_option_name = 'xili_widget_recent_entries';
 
 		add_action( 'save_post', array(&$this, 'flush_widget_cache') );
@@ -207,7 +207,7 @@ class xili_WP_Widget_Recent_Comments extends WP_Widget {
 	
 	function xili_WP_Widget_Recent_Comments() {
 		$widget_ops = array('classname' => 'xili_widget_recent_comments', 'description' => __( 'The most recent comments by xili-language','xili-language-widget' ).' © v. '.XILILANGUAGE_VER );
-		$this->WP_Widget('xili-recent-comments', __('Recent Comments list','xili-language-widget'), $widget_ops);
+		$this->WP_Widget('xili-recent-comments', '[©xili] ' . __('Recent Comments list','xili-language-widget'), $widget_ops);
 		$this->alt_option_name = 'xili_widget_recent_comments';
 
 		if ( is_active_widget(false, false, $this->id_base) )
@@ -311,7 +311,7 @@ class xili_language_Widgets extends WP_Widget {
 	function xili_language_Widgets() {
 		
 		$widget_ops = array('classname' => 'xili-language_Widgets', 'description' => __( "List of available languages by xili-language plugin", 'xili-language-widget' ).' © v. '.XILILANGUAGE_VER );
-		$this->WP_Widget('xili_language_widgets', __("List of languages", 'xili-language-widget'), $widget_ops);
+		$this->WP_Widget('xili_language_widgets', '[©xili] ' . __("List of languages", 'xili-language-widget'), $widget_ops);
 		$this->alt_option_name = 'xili_language_widgets_options';
 	}
 	
@@ -379,7 +379,7 @@ class xili_language_Widgets extends WP_Widget {
 	<?php
 	
 	if ( class_exists('xili_language') ) {
-		if ( $xili_language->this_has_filter('xili_language_list')) // one external action
+		if ( $xili_language->this_has_external_filter('xili_language_list')) // one external action
 			$xili_language->langs_list_options = array();
 		if ( has_filter('xili_language_list_options') ) {	// is list of options described
 			do_action('xili_language_list_options', $theoption); // update the list of external action

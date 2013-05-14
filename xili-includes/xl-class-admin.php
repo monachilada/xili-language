@@ -5,6 +5,7 @@
  * 2013-03-13 (05)
  * 2013-03-17 (2.8.6)
  * 2013-04-16 (2.8.7)
+ * 2013-05-03 (2.8.8)
  */
  
 class xili_language_admin extends xili_language {
@@ -21,6 +22,7 @@ class xili_language_admin extends xili_language {
 	var $news_id = 0; //for multi pointers
 	var $news_case = array();
 	var $admin_messages = array(); //set in #491
+	var $user_locale = 'en_US';
 	
 	/**
 	 * PHP 5 Constructor
@@ -28,7 +30,6 @@ class xili_language_admin extends xili_language {
 	function __construct( $xl_parent ){
 		
 		$this->parent = $xl_parent; // to keep values built in parent filters...
-		//error_log ( 'test ' . serialize ( $this->langs_list_options ) );
 		
 		// need parent constructed values (third param - tell coming from admin-class //2.6
 		parent::__construct( false, false, true );  
@@ -46,6 +47,7 @@ class xili_language_admin extends xili_language {
 		$this->langs_group_tt_id = &$this->parent->langs_group_tt_id;
 		
 		$this->get_template_directory = &$this->parent->get_template_directory;
+		$this->get_parent_theme_directory = &$this->parent->get_parent_theme_directory;
 		
 		$this->show_page_on_front = &$this->parent->show_page_on_front;
 		
@@ -62,17 +64,20 @@ class xili_language_admin extends xili_language {
 		$this->langs_shortqv_slug_array = &$this->parent->langs_shortqv_slug_array;
 		
 		
-			
+		add_action( 'admin_init', array( &$this, 'init_roles') );	// 2.8.8
 		
 		// since 2.2.0
 		add_action( 'admin_bar_init', array( &$this, 'admin_bar_init') ); // add button in toolbar
 		
 		// 2.8.0 dashboard language - inspired from Takayuki Miyoshi works
 		add_filter( 'locale', array( &$this, 'admin_side_locale') ); 
+		// cannot be used for most parts of admin menu
+		// add_action( 'after_setup_theme', array( &$this, 'admin_user_id_locale') ); // 2.8.8 http://bbpress.trac.wordpress.org/ticket/2309
 		
 		add_action( 'admin_init', array( &$this, 'switch_user_locale') );
 		add_action( 'personal_options_update', array( &$this, 'update_user_dashboard_lang_option') );
 		add_action( 'personal_options', array( &$this, 'select_user_dashboard_locale') );
+		
 		
 		// plugins list infos
 		add_filter( 'plugin_row_meta', array( &$this, 'more_infos_in_plugin_list' ), 10, 2);  // class WP_Plugins_List_Table
@@ -86,7 +91,11 @@ class xili_language_admin extends xili_language {
 		add_action( 'admin_print_styles-settings_page_language_page', array(&$this, 'print_styles_options_language_page'), 20 );
 		add_action( 'admin_print_styles-settings_page_language_front_set', array(&$this, 'print_styles_options_language_tabs'), 20 );
 		add_action( 'admin_print_styles-settings_page_language_expert', array(&$this, 'print_styles_options_language_tabs'), 20 );
+		add_action( 'admin_print_styles-settings_page_language_files', array(&$this, 'print_styles_options_language_tabs'), 20 );
 		add_action( 'admin_print_styles-settings_page_language_support', array(&$this, 'print_styles_options_language_support'), 20 );
+		
+		// Navigation menu builder
+		add_action( 'admin_init', array(&$this, 'add_language_nav_menu_meta_boxes') );
 		
 		// Edit Post Page
 		add_action( 'admin_init', array(&$this,'admin_init') ); // styles registering
@@ -160,6 +169,8 @@ class xili_language_admin extends xili_language {
 		/* actions for edit link page */	
 		add_action( 'admin_menu', array(&$this, 'add_custom_box_in_link') );
 		
+		add_action( 'admin_enqueue_scripts', array(&$this, 'admin_enqueue_menu_script') );
+		
 		add_filter( 'manage_link-manager_columns', array(&$this,'xili_manage_link_column_name') ); // 1.8.5
 		add_action( 'manage_link_custom_column', array(&$this,'manage_link_lang_column'),10,2);
 		add_action( 'admin_print_styles-link.php', array(&$this, 'print_styles_link_edit'), 20 );
@@ -200,8 +211,6 @@ class xili_language_admin extends xili_language {
  	 * updated and renamed 2.4.2 (node)
  	 */
 	function xili_tool_bar_links() {
-		
-		
 		
 		$link = plugins_url( 'images/xililang-logo-24.png', $this->file_file ) ;
 		$alt = __( 'Languages by ©xiligroup' ,'xili-language');
@@ -281,6 +290,16 @@ class xili_language_admin extends xili_language {
 	}
 	
 	/**
+	 * from after_setup_theme action
+	 *
+	 * @since 2.8.8
+	 *
+	 */
+	function admin_user_id_locale () {
+		$this->user_locale = get_user_option( 'user_locale' );
+	}
+	
+	/**
 	 * Admin side localization - user's dashboard
 	 *
 	 * @since 2.8.0
@@ -288,8 +307,14 @@ class xili_language_admin extends xili_language {
 	 */
 	function admin_side_locale( $locale = 'en_US' ) {
 		
+		// to avoid notice with bbPress 2.3 - brutal approach
+		if ( class_exists( 'bbPress') ) remove_action( 'set_current_user', 'bbp_setup_current_user' ); 
 		$locale = get_user_option( 'user_locale' ); 
-
+		if ( class_exists( 'bbPress') ) add_action( 'set_current_user', 'bbp_setup_current_user', 10 );
+		
+		// replace by
+		//$locale = $this->user_locale; // see after_setup_theme filter above 2.8.8
+		
 		if ( empty( $locale ) )
 			$locale = $this->get_default_locale();
 		
@@ -328,7 +353,7 @@ class xili_language_admin extends xili_language {
 		'dashboard', 'users', 'profile',
 		'edit-post', 'edit-page', 'link-manager', 'upload',
 		'settings_page_language_page', 'settings_page_language_front_set',  
-		'settings_page_language_expert','settings_page_language_support',
+		'settings_page_language_expert', 'settings_page_language_expert', 'settings_page_language_support', 'settings_page_language_files',
 		'xdmsg', 'edit-xdmsg', 'xdmsg_page_dictionary_page'
 		) ) 
 		|| ( false !== strpos ( $screen->id , '_page_xili_tidy_tags_assign' ) ) 
@@ -402,7 +427,7 @@ class xili_language_admin extends xili_language {
 	
 		$langs = array();
 	
-		$installed_locales = get_available_languages();
+		$installed_locales = get_available_languages(); 
 		$installed_locales[] = $this->get_default_locale();
 		$installed_locales[] = 'en_US';
 		$installed_locales = array_unique( $installed_locales );
@@ -591,8 +616,12 @@ class xili_language_admin extends xili_language {
 		 $this->thehook4 = add_options_page(__('xili-language plugin','xili-language'). ' - 3', 'xl-expert', 'manage_options', 'language_expert', array( &$this, 'languages_expert' ) );
 		 add_action('load-'.$this->thehook4, array(&$this,'on_load_page_expert'));
 		 $hooks[] = $this->thehook4;
+		 // since 2.8.8
+		 $this->thehook5 = add_options_page(__('xili-language plugin','xili-language'). ' - 4', __('Languages Files','xili-language'), 'manage_options', 'language_files', array( &$this, 'languages_files' ) );
+		 add_action('load-'.$this->thehook5, array(&$this,'on_load_page_files'));
+		 $hooks[] = $this->thehook5;
 		 
-		 $this->thehook3 = add_options_page(__('xili-language plugin','xili-language'). ' - 4', 'xl-support', 'manage_options', 'language_support', array( &$this, 'languages_support' ) );
+		 $this->thehook3 = add_options_page(__('xili-language plugin','xili-language'). ' - 5', 'xl-support', 'manage_options', 'language_support', array( &$this, 'languages_support' ) );
 		 add_action('load-'.$this->thehook3, array(&$this,'on_load_page_support'));
 		 $hooks[] = $this->thehook3; 
 		 
@@ -617,6 +646,7 @@ class xili_language_admin extends xili_language {
 	function admin_sub_menus_hide() {
 		remove_submenu_page( 'options-general.php', 'language_front_set' );
 		remove_submenu_page( 'options-general.php', 'language_expert' );
+		remove_submenu_page( 'options-general.php', 'language_files' );
 		remove_submenu_page( 'options-general.php', 'language_support' );
 	}
 	// 2.8.2
@@ -624,7 +654,7 @@ class xili_language_admin extends xili_language {
 		global $plugin_page, $submenu_file;
 		
 		// This tweaks the Tools subnav menu to only show one XD menu item
-		if ( in_array( $plugin_page, array( 'language_expert', 'language_support', 'language_front_set' ) ) )
+		if ( in_array( $plugin_page, array( 'language_expert', 'language_support', 'language_front_set', 'language_files' ) ) )
 			$submenu_file = 'language_page';
 	}
 	
@@ -700,6 +730,9 @@ class xili_language_admin extends xili_language {
  			case 'xl_new_version' :
  				$pointer_text = '<h3>' . esc_js( __( 'xili-language updated', 'xili-language') ) . '</h3>';
 				$pointer_text .= '<p>' . esc_js( sprintf( __( 'xili-language was updated to version %s', 'xili-language' ) , XILILANGUAGE_VER) ). '</p>';
+				
+				$pointer_text .= '<p>' . esc_js( sprintf( __( 'This version %s introduces a new fourth tab to help webmaster to try to download core MO language files (used in dashboard) from WP SVN server:', 'xili-language' ) , XILILANGUAGE_VER) .' “<a href="options-general.php?page=language_files">'. __('Managing language files', 'xili-language')."</a>”" ). '</p>';
+				
 				$pointer_text .= '<p>' . esc_js( sprintf( __( 'This version %s introduces new way (more accurate) to manage <strong>plugin text-domain switching</strong>. So, if you used -all- option, you must set again option by checking targetted plugins in third tab:', 'xili-language' ) , XILILANGUAGE_VER) .' “<a href="options-general.php?page=language_expert">'. __('Settings for experts','xili-language')."</a>”" ). '</p>';
 				
 				$pointer_text .= '<p>' . esc_js( __( 'See settings submenu', 'xili-language' ).' “<a href="options-general.php?page=language_page">'. __('Languages ©xili','xili-language')."</a>”" ). '</p>';
@@ -821,8 +854,12 @@ class xili_language_admin extends xili_language {
 		$this->admin_messages['alert']['no_domain_defined'] = __('Theme domain NOT defined','xili-language');
 		
 		$this->admin_messages['alert']['menu_auto_inserted'] = sprintf(__('Be aware that language list is already automatically inserted (see above) and %s','xili-language'), $this->admin_messages['alert']['default'] ) ;
-	
-		$this->admin_messages['alert']['plugin_deinstalling'] = sprintf(__('CAUTION: When checking below, after deactivating xili-language plugin, if delete it through plugins list, ALL the xili-language datas in database will be definitively ERASED !!! (only multilingual features). %s', 'xili-language'), $this->admin_messages['alert']['default'] ) ;
+		
+		if ( is_multisite() ) {
+			$this->admin_messages['alert']['plugin_deinstalling'] = sprintf(__('CAUTION: If checked below, during deactivating xili-language plugin, ALL the xili-language datas in database will be definitively ERASED !!! (only multilingual features on <strong>this</strong> website of the WP network (multisite) install). %s', 'xili-language'), $this->admin_messages['alert']['default'] ) ;
+		} else {
+			$this->admin_messages['alert']['plugin_deinstalling'] = sprintf(__('CAUTION: When checking below, after deactivating xili-language plugin, if delete it through plugins list, ALL the xili-language datas in database will be definitively ERASED !!! (only multilingual features). %s', 'xili-language'), $this->admin_messages['alert']['default'] ) ;
+		}
 		
 		$this->admin_messages['alert']['erasing_language'] = __('Erase (only) multilingual features of concerned posts when this language will be erased !','xili-language');
 		
@@ -840,7 +877,7 @@ class xili_language_admin extends xili_language {
 			add_meta_box('xili-language-sidebox-msg', __('Message','xili-language'), array(&$this,'on_sidebox_msg_content'), $this->thehook , 'side', 'core');
 			add_meta_box('xili-language-sidebox-info', __('Info','xili-language'), array(&$this,'on_sidebox_info_content'), $this->thehook , 'side', 'core');
 			
-			if ( !is_multisite() )
+			// if ( !is_multisite() ) 2.8.8
 			  add_meta_box('xili-language-sidebox-uninstall', __('Uninstall Options','xili-language'), array(&$this,'on_sidebox_uninstall_content'), $this->thehook , 'side', 'low');
 			  
 			$this->insert_news_pointer ( 'languages_settings' ); // news pointer 2.6.2
@@ -880,6 +917,24 @@ class xili_language_admin extends xili_language {
 			$this->insert_news_pointer ( 'languages_expert' ); // news pointer 2.6.2
 			$this->insert_news_pointer ( 'languages_expert_special' );
 	}
+	
+	/**
+	 * Settings by experts and info 
+	 * @since 2.4.1 
+	 */
+	function on_load_page_files() {
+			wp_enqueue_script('common');
+			wp_enqueue_script('wp-lists');
+			wp_enqueue_script('postbox');
+			
+			add_meta_box('xili-language-sidebox-theme', __('Current theme infos','xili-language'), array(&$this,'on_sidebox_4_theme_info'), $this->thehook5 , 'side', 'high');
+			
+			add_meta_box('xili-language-sidebox-info', __('Info','xili-language'), array(&$this,'on_sidebox_info_content'), $this->thehook5 , 'side', 'core');
+			
+			//$this->insert_news_pointer ( 'languages_expert' ); // news pointer 2.6.2
+			//$this->insert_news_pointer ( 'languages_expert_special' );
+	}
+	
 	
 	/**
 	 * Support and info
@@ -1394,6 +1449,445 @@ class xili_language_admin extends xili_language {
 	}
 	
 	/**
+	 * Navigation menu: new ways to insert language list via menu builder screen
+	 * 
+	 * @since 2.8.8
+	 *
+	 */
+	function add_language_nav_menu_meta_boxes() {
+     	add_meta_box(
+     		'insert-xl-list',
+     		sprintf ( __('%s Languages list', 'xili-language'), '[©xili]'),
+     		array( $this, 'language_nav_menu_link'),
+     		'nav-menus',
+     		'side',
+     		'high'
+     	);
+     }
+	// called by above filter
+	function language_nav_menu_link() { 
+			// div id in submit below
+		global $_nav_menu_placeholder, $nav_menu_selected_id;
+		$_nav_menu_placeholder = 0 > $_nav_menu_placeholder ? $_nav_menu_placeholder - 1 : -1;
+			?>
+        	<div id="posttype-xllist" class="posttypediv">
+        		<div id="tabs-panel-xllist" class="tabs-panel tabs-panel-active">
+        			<ul id ="xllist-checklist" class="categorychecklist form-no-clear">
+        				
+        				<?php
+        				foreach ($this->langs_list_options as $typeoption) {
+							if ( false !== strpos( $typeoption[0], 'navmenu' ) ) {
+        				// list according available types of menu
+        				?>
+        				<li>
+        					<label  title="<?php echo $typeoption[2]; ?>" class="menu-item-title">
+        						<input type="radio" class="menu-item-checkbox" name="menu-item[<?php echo $_nav_menu_placeholder; ?>][menu-item-object-id]" value="-1">&nbsp;<?php _e( $typeoption[1], 'xili-language' ); ?>
+        					</label>
+        					<input type="hidden" class="menu-item-type" name="menu-item[<?php echo $_nav_menu_placeholder; ?>][menu-item-type]" value="custom">
+        					<input type="hidden" class="menu-item-title" name="menu-item[<?php echo $_nav_menu_placeholder; ?>][menu-item-title]" value="<?php echo $this->insertion_point_box_title; ?>">
+        					<input type="hidden" class="menu-item-url" name="menu-item[<?php echo $_nav_menu_placeholder; ?>][menu-item-url]" value="<?php echo $this->insertion_point_dummy_link; ?>">
+        					<input type="hidden" class="menu-item-attr-title" name="menu-item[<?php echo $_nav_menu_placeholder; ?>][menu-item-attr-title]" value="<?php echo $typeoption[2]; ?>">
+        					<input type="hidden" class="menu-item-classes" name="menu-item[<?php echo $_nav_menu_placeholder; ?>][menu-item-classes]" value="xl-list <?php echo $typeoption[0]; ?>">
+        				</li>
+        				<?php } } ?>
+        				
+        			</ul>
+        		</div>
+        		<p class='description'><?php _e( 'Check to decide what type of languages menu. Only an insertion point will be placed inside the menu. The content of the language list will be automatically made according navigation rules and contexts.', 'xili-language' ); ?></p>
+        		<p class="button-controls">
+        			<span class="list-controls">
+        				
+        			</span>
+        			<span class="add-to-menu">
+        				<input type="submit" <?php disabled( $nav_menu_selected_id, 0 ); ?> class="button-secondary submit-add-to-menu right" value="<?php esc_attr_e('Add to Menu'); ?>" name="add-post-type-menu-item" id="submit-posttype-xllist">
+        				<span class="spinner"></span>
+        			</span>
+        		</p>
+        	</div>
+        <?php 
+    }
+    
+    
+    // prepares javascript to modify the languages list menu item
+	function admin_enqueue_menu_script() {
+		$screen = get_current_screen();
+		if ('nav-menus' != $screen->base)
+			return;
+
+		$suffix = defined( 'WP_DEBUG') && WP_DEBUG ? '' : '.min';
+		wp_enqueue_script( 'xllist_nav_menu', plugin_dir_url ( $this->file_file ) .'js/nav-menu'.$suffix.'.js', array('jquery'), XILILANGUAGE_VER );
+		
+		$data = array ();
+		$data['strings'][0] = $this->insertion_point_box_title;
+		$data['strings'][1] = esc_js( __('The languages list will be inserted here and :','xili-language') );
+		$data['strings'][2] = esc_js( __(' (Hidden input items below will be used for live menu generating.)','xili-language') );
+		// send all these data to javascript
+		wp_localize_script( 'xllist_nav_menu', 'xili_data', $data );
+	}
+	
+	
+	/**
+	 * Files page - to download automattic mo files
+	 *
+	 * @since 2.8.8
+	 */
+	function languages_files() {
+		global $wp_version;
+		$msg = 0;
+		$themessages = array('ok');
+		$action = '';
+		$emessage = '';
+		$message = '';
+		$upgrade = false ;
+		if ( isset( $_POST['downloadmo'] ) ) {
+			$action = 'downloadmo' ; 
+		} else if ( isset( $_POST['mo_merging'] ) ) {
+			$action = 'mo_merging' ; 
+		} else if ( isset( $_POST['checkdownloadmo'] ) ) { 
+			$action = 'checkdownloadmo' ;
+		}
+			
+			
+		$message = $action ;
+		
+		
+		
+		$themessages = array ( "",
+		__('mo files updated','xili-language'),
+		__('mo files unreachable','xili-language') ) ;
+		
+		add_meta_box('xili-language-files', __('Languages System Files','xili-language'), array(&$this,'on_box_files_content'), $this->thehook5 , 'normal', 'low');
+		
+		
+		?>
+		<div id="xili-language-files" class="wrap columns-2 minwidth">
+			<?php screen_icon('options-general'); ?>
+			<h2><?php _e('Languages','xili-language') ?></h2>
+			<h3 class="nav-tab-wrapper">
+				<?php $this->set_tabs_line() ?>
+			</h3> 
+			
+			<?php if ( $action == 'downloadmo' ) {
+				check_admin_referer( 'xili-language-files' );
+				$listlanguages = $this->get_listlanguages();
+				$a = 0;
+				
+				foreach ( $listlanguages as $language )  {
+					
+					if ( $language->name != 'en_US' ) {
+					
+						if ( isset( $_POST['downloadtheme_'.$language->name] ) ) {
+							
+							if ( 'Choose' != $_POST['downloadtheme_'.$language->name] ) {
+								
+								$s = explode ( '_', $_POST['downloadtheme_'.$language->name] );
+								
+								$theme = $s[1];
+								
+							} else {
+								$theme = "";
+							}
+							
+						} else {
+							$theme = "";
+						}
+						
+						if ( isset( $_POST['download_'.$language->name] ) && false !== ( strpos ( $_POST['download_'.$language->name], "Auto"  ) ) ) {
+						
+							$version = str_replace ( 'Auto_', '' , $_POST['download_'.$language->name] ) ;	
+								
+				    	// download_mo_from_automattic( $locale = 'en_US', $upgrade = false, $theme_name = "" ) 
+				    		$a = $this->download_mo_from_automattic( $language->name, $version, $theme, 1 ) ;
+						
+						} else if ( isset( $_POST['download_'.$language->name] ) &&  false !== ( strpos ( $_POST['download_'.$language->name], "GlotPress"  ) ) ) {
+							
+							$a = $this->download_mo_from_translate_wordpress( $language->name, $wp_version, $theme , 1 ) ; 
+							
+						} else if ( isset( $_POST['downloadtheme_'.$language->name] ) && 'Choose' !== $_POST['downloadtheme_'.$language->name] ) {
+							
+							if ( $s[0] == 'Auto' ) {
+							
+								$theme = $_POST['downloadtheme_'.$language->name];
+								
+								$automattic_root = 'http://svn.automattic.com/wordpress-i18n/';
+								$url_base = $automattic_root."{$language->name}/tags/";
+								$versions_to_check = $this->versions_to_check ( $url_base ); // to recover version
+							
+								$version = $this->find_if_version_exists( $language->name, $versions_to_check, $url_base ) ;
+								
+								$a = $this->download_mo_from_automattic( $language->name, $version, $theme, 2 ) ;
+							
+							} else {
+								
+								$a = $this->download_mo_from_translate_wordpress( $language->name, $wp_version, $theme, 2 ) ;
+							}
+						}
+					
+					}
+					//echo '... ' . $language->name ;
+				}
+				
+			    $msg = ( $a ) ? 1 : 2;
+			}
+		
+		if ( $action == 'checkdownloadmo' ) {
+			check_admin_referer( 'xili-language-files' );
+			$upgrade = true ;
+		}
+		// $this->xili_settings['mo_parent_child_merging']
+		
+		if ( $action == 'mo_merging' ) {
+			check_admin_referer( 'xili-language-files' );
+			if ( isset( $_POST['mo_parent_child_merging'] ) && $_POST['mo_parent_child_merging'] == 'merging' ) {
+				$this->xili_settings['mo_parent_child_merging'] = true ;
+			} else {
+				$this->xili_settings['mo_parent_child_merging'] = false ;
+			}
+			update_option('xili_language_settings', $this->xili_settings);
+		}
+			
+			?>
+			<?php if (0!= $msg ) { ?>
+			<div id="message" class="updated fade"><p><?php echo $themessages[$msg]; ?></p></div>
+			<?php } ?>
+			<form name="files" id="files" method="post" action="options-general.php?page=language_files">
+				<?php wp_nonce_field('xili-language-files'); ?>
+				<?php wp_nonce_field('closedpostboxes', 'closedpostboxesnonce', false ); ?>
+				<?php wp_nonce_field('meta-box-order', 'meta-box-order-nonce', false ); ?>
+				<p class="width23 boldtext">
+				<?php printf(__('This tab is added to help aware webmaster to find WP core MO files from %1$s Automattic SVN server %2$s or %3$s GlotPress server%2$s. <br />Be aware that files are not always available for the current WP version (%4$s).<br /> So, the rules for Automattic SVN are set to find the most recent version equal or below the current (exp. 3.5.x or 3.4.x for 3.6). Only check the wished files if language is used in dashboard or default theme (2011, 2012,… ).','xili-language'),'<a href="http://svn.automattic.com/wordpress-i18n/" target="_blank">','</a>', '<a href="http://translate.wordpress.org/projects/wp" target="_blank">', $wp_version ); 
+				
+				echo '<br /><strong>'.__('Be aware that choosen files will be downloaded in Core or Theme languages sub-folder. Verify folder rights !','xili-language').'</strong>';
+				
+				?></p>
+				<?php 
+				
+				$data = array(
+			'message'=>$message, 'action'=>$action, 'emessage'=>$emessage, 'upgrade' => $upgrade 
+		);
+				
+				$this->setting_form_content( $this->thehook5, $data );
+				?>	
+			</form>
+		</div>
+		<?php $this->setting_form_js( $this->thehook5 );
+		
+	}
+	
+	function on_box_files_content ( $data ) {
+		extract ( $data );
+		$how = $this->states_of_mofiles( $upgrade );
+		 ?>
+		 <div class="submit"><input id='downloadmo' name='downloadmo' type='submit' value="<?php _e('Download mo','xili-language') ?>" /></div>
+		<div class="submit"><input id='checkdownloadmo' name='checkdownloadmo' type='submit' value="<?php _e('Check again before downloading mo','xili-language') ?>" /></div>
+			
+				<?php if ( $how == 0  ) 
+					 echo '<p><strong>'.__('All seems to be in WP languages folder','xili-language').'</strong></p>';
+				?>
+				<div class="clearb1">&nbsp;</div><br/>
+		<?php
+	}
+	
+	// display states of files locally and at automattic svn server
+	
+	function states_of_mofiles ( $show_upgrade = false ) {
+		global $wp_version;
+		$wp_version_details = explode ('.', $wp_version );
+		
+		$wp_version_root = $wp_version_details[0] ;
+		
+		if ( count ( $wp_version_details ) > 2 ) 
+			$wp_version_root_2 = $wp_version_details[0] . '.' . $wp_version_details[1] ;
+		
+		$available_languages_installed = get_available_languages();
+		//$available_languages_installed[] = $this->get_default_locale();
+		$available_languages_installed = array_unique( $available_languages_installed );
+		$available_languages_installed = array_filter( $available_languages_installed );
+		
+		$listlanguages = $this->get_listlanguages();
+		
+		$automattic_root = 'http://svn.automattic.com/wordpress-i18n/';
+		
+		$i = 0 ;
+		if ( is_child_theme() ) { 
+			$theme_name = get_option("stylesheet");
+			$parent_theme_name = get_option("template");
+			
+		} else {
+			$theme_name = get_option("template");
+			$parent_theme_name = get_option("template"); 
+			
+		}
+		foreach ( $listlanguages as $language )  {
+			
+			echo '<div class="langbox" style="overflow:hidden;">';
+			echo '<h4>';
+			echo $language->description . ' ('.$language->name.') ';
+			echo '</h4>';
+			
+			$installed = in_array( $language->name, $available_languages_installed );
+			
+			if ( $installed ) {
+				echo '<p>'.__('Installed in WP languages folder','xili-language').'</p>';
+			} 
+			
+			$show = ( ( $installed && $show_upgrade ) || ( !$installed ) ) ? true : false ;
+			
+			if ( $show )  {
+				
+				// GlotPress
+				if ( $language->name != 'en_US' ) {
+					if ( $ver = $this->check_versions_in_glotpress ( $language->name, $wp_version ) ) {
+						if ( $ver = 'dev' ) { 
+							echo '<p><em>'.__('Development Version available on GlotPress WordPress.org server','xili-language').'</em></p>';
+						} else {
+							echo '<p><em>'. sprintf( __('Version %s ready to be downloaded on GlotPress WordPress.org server','xili-language'), $wp_version ).'</em></p>';
+						}
+					} else {
+						echo '<p>'.__('Not available from GlotPress WordPress.org server','xili-language').'</p>';
+					}
+				}
+				// Automattic
+				$url_base = $automattic_root."{$language->name}/tags/";
+				$versions_to_check = $this->versions_to_check ( $url_base );
+				//$version/messages/{$language->name}.mo
+				
+				if ( $language->name == 'en_US' ) {
+					echo '<p>'.__('Root language of WordPress','xili-language').'</p>';
+				} else if ( $version = $this->find_if_version_exists( $language->name, $versions_to_check, $url_base ) ) {
+					echo '<p><em>'. sprintf( __('Version %s ready to be downloaded from Automattic SVN server','xili-language'), $version ).'</em></p>';
+					
+					echo __('Server to download','xili-language');
+					echo ' : <select id="download_'.$language->name.'" name="download_'.$language->name.'" >';
+					echo '<option value="Choose" >' . __('Choose server...','xili-language') . '</option>';
+					echo '<option value="Auto_'.$version.'">' . __( 'Try from Automattic', 'xili-language' ) . '</option>' ;
+					echo '<option value="GlotPress_'.$version.'">' . __( 'Try from GlotPress', 'xili-language' ) . '</option>' ;
+					echo '</select>';
+					$i++;
+				} else {
+					echo '<p>'.__('Not available from Automattic SVN server','xili-language').'</p>';
+				}			
+			
+			}	
+				if ( $language->name != 'en_US' && in_array ( $parent_theme_name, array('twentyten', 'twentyeleven', 'twentytwelve', 'twentythirteen') ) ) {
+					echo '<fieldset class="themebox"><legend>';
+					echo sprintf( __('Theme\'s files %s','xili-language'), ( ( is_child_theme() ) ? $theme_name .' ('.$parent_theme_name.') ':  $theme_name ) );
+					echo '</legend>';
+					
+					$mofile = get_template_directory(). '/languages/' . $language->name.'.mo';
+					if ( file_exists ( $mofile )  ) {
+						if ( is_child_theme() ) {
+							
+							echo '<p>'. sprintf( __('Installed in parent theme\'s (%s) languages folder','xili-language'), $parent_theme_name ).'</p>';
+						} else {
+							echo '<p>'.__('Installed in theme\'s languages folder','xili-language').'</p>';
+						}
+					} else {
+						if ( is_child_theme() ) {
+							echo '<p>'. sprintf( __('Not installed in parent theme\'s (%s) languages folder','xili-language'), $parent_theme_name ).'</p>';
+						} else {	
+							echo '<p>'.__('Not installed in theme\'s languages folder','xili-language').'</p>';
+						}
+						
+					echo __('Server to download theme file','xili-language');
+					echo ' : <select id="downloadtheme_'.$language->name.'" name="downloadtheme_'.$language->name.'" >';
+					echo '<option value="Choose" >' . __('Choose server...','xili-language') . '</option>';
+					echo '<option value="Auto_'.$parent_theme_name.'" >' . __( 'Try from Automattic', 'xili-language' ) . '</option>' ;
+					echo '<option value="GlotPress_'.$parent_theme_name.'" >' . __( 'Try from GlotPress', 'xili-language' ) . '</option>' ;
+					echo '</select>';
+						
+						$i++;
+					}
+				echo '</fieldset>';
+			
+				}
+			echo '</div>';
+			
+			
+			
+			
+		}
+		return $i;	
+	}
+	
+	function find_if_version_exists ( $language, $versions_to_check, $url_base ) {
+		if ( $versions_to_check != array () ) {
+			foreach ( $versions_to_check as $version ) {
+				$url = $url_base . "$version/messages/$language.mo";
+				
+				if ( $this->url_exists( $url ) ) return $version;
+			} 
+		} else {
+			return false;	
+		}
+	}
+	
+	function versions_to_check ( $url_base, $upgrade = false ) {
+		// define versions to check
+		global $wp_version;
+		
+		$wp_version_details = explode ('.', $wp_version );
+		
+		if ( $this->url_exists( $url_base ) ) {
+			// get all the versions available in the subdirectory
+			$resp = wp_remote_get($url_base);
+			if (is_wp_error($resp) || 200 != $resp['response']['code'])
+			  return false;
+
+			preg_match_all('#>([0-9\.]+)\/#', $resp['body'], $matches);
+			if (empty($matches[1]))
+				return false;
+
+			rsort($matches[1]); // sort from newest to oldest
+		
+			$versions = $matches[1]; 
+
+			foreach ($versions as $key => $version) {
+				
+				$version_details = explode ('.', $version );
+				
+				if ( $version_details[0] != $wp_version_details[0] ) {
+					unset($versions[$key]);
+				// will not try to download a too recent mofile
+				} else if ( version_compare( $version, $wp_version, '>') ) {
+					unset($versions[$key]);
+				// no big diff
+				} else if ( abs ((int) $version_details[1] - (int)( $wp_version_details[1])) > 2 ) { // 3.6 and 3.5.x
+					unset($versions[$key]);
+				// will not download an older version if we are upgrading
+				} else if ($upgrade && version_compare($version, $wp_version, '<=')) {
+					unset($versions[$key]);
+				}	
+			} 
+			return $versions; 
+		} else {
+			return false;
+		}
+	}
+	
+	function check_versions_in_glotpress ( $locale, $version = 'dev' ) {
+		
+		$version_folder = $this->glotPress_version_folder ( $version ) ;
+		
+		// Get the list of available translation from Translate WordPress. This is expected to be JSON.
+		$translations = wp_remote_get( sprintf( 'https://translate.wordpress.org/api/projects/wp/%1$s', $version_folder ) );
+		if ( is_wp_error( $translations ) || wp_remote_retrieve_response_code( $translations ) !== 200 )
+			return false ;
+
+		$translations = json_decode( wp_remote_retrieve_body( $translations ) );
+		if ( is_null( $translations ) )
+			return false ;
+		
+		// See if the requested $locale has an available translation
+		$translations = array_shift( wp_list_filter( $translations->translation_sets, array( 'wp_locale' => $locale ) ) );
+		
+		if ( empty( $translations ) )
+			return false ;
+		
+		return $translations->locale ;
+	}
+	
+	/**
 	 * Support page
 	 *
 	 * @since 2.4.1
@@ -1516,6 +2010,7 @@ class xili_language_admin extends xili_language {
 				'language-page' => array( 'label' => __( 'Languages page', 'xili-language' ), 'url' => 'options-general.php?page=language_page'     ),
 				'language-frontend-settings' => array( 'label' => __( 'Languages front-end settings', 'xili-language' ), 'url' => 'options-general.php?page=language_front_set'    ),
 				'language-expert' => array( 'label' => __( 'Settings for experts', 'xili-language' ), 'url' => 'options-general.php?page=language_expert'   ),
+				'language-files' => array( 'label' => __( 'Managing language files', 'xili-language' ), 'url' => 'options-general.php?page=language_files'   ),
 				'language-support' => array( 'label' => __( 'xili-language support', 'xili-language' ), 'url' => 'options-general.php?page=language_support'   ),
 			);
 		foreach ( $tabs as $tab_id => $tab ) {
@@ -1826,7 +2321,7 @@ class xili_language_admin extends xili_language {
 	 	<div class='submit'>
 		<input id='updateoptions' name='updateoptions' type='submit' tabindex='6' value="<?php _e('Update','xili-language') ?>" /></div>
 		
-		<div class="clearb1"></div><?php
+		<div class="clearb1">&nbsp;</div><?php
 	}
 	
 	/**
@@ -1885,7 +2380,7 @@ class xili_language_admin extends xili_language {
 	 	<div class='submit'>
 		<input id='updatespecials' name='updatespecials' type='submit' tabindex='6' value="<?php _e('Update','xili-language') ?>" /></div>
 		
-		<div class="clearb1"></div><?php
+		<div class="clearb1">&nbsp;</div><?php
 	
 	}
 	
@@ -1930,7 +2425,41 @@ class xili_language_admin extends xili_language {
 	 	
 	 	
 	<?php
+		$screen = get_current_screen();  // to limit unwanted side effects (form)
+		
+		if ( $screen->id == 'settings_page_language_files' && is_child_theme() ) {
+		
+			if ( $this->xili_settings['mo_parent_child_merging']  ) {
+			?>
+			<fieldset class="box"><legend><?php echo __("Language files in parent theme:",'xili-language'); ?></legend>
+		 	<p>
+		 	<?php echo __("Languages sub-folder:",'xili-language').' '.$this->xili_settings['parent_langs_folder']; ?><br />
+		 	<?php _e('Available MO files:','xili-language'); echo '<br />'; 
+		 	$template_directory = $this->get_parent_theme_directory;
+		 	if ( file_exists( $template_directory ) ) // when theme was unavailable
+		 		$this->find_files( $template_directory, "/.mo$/", array(&$this,"available_mo_files") ) ;
+		 	if ( $this->parent->ltd === false )	echo '<br /><span class="red-alert">'.$this->admin_messages['alert']['no_load_function'].'</span>'; 
+		 		
+		 		?>
+		 	</p><br />
+		 	</fieldset>
+		 	
+			<?php
+			}
+			echo '<br />' . __( 'MO merging between parent and child','xili-language'). ':&nbsp;<input type="checkbox" id="mo_parent_child_merging" name="mo_parent_child_merging" value="merging" '. checked ( $this->xili_settings['mo_parent_child_merging'], true ,false ) .' />';
+			
+			?>
+			<div class='submit'>
+			<input id='mo_merging' name='mo_merging' type='submit' value="<?php _e('Update','xili-language') ?>" />
+			</div>
+			<?php	
+			
+			
+		}
+	
 	}
+	
+	
 	
 	/** 
 	 * Actions box 
@@ -1951,18 +2480,19 @@ class xili_language_admin extends xili_language {
 		
 	 	<fieldset class="box"><legend><?php echo __("Nav menu: Home links in each language",'xili-language'); ?></legend>
 	 		<?php 
-	 			$menu_locations =  get_nav_menu_locations(); // only if linked to a content - get_registered_nav_menus() ; // 
-	 			// print_r(get_nav_menu_locations());
+	 			$menu_locations =  get_registered_nav_menus(); // get_nav_menu_locations() keeps data in cache; // only if linked to a content - get_registered_nav_menus() ; // 2.8.8 with has_nav_menu()
+	 			
 		 		$selected_menu_locations = ( isset($this->xili_settings['navmenu_check_options'] ) ) ? $this->xili_settings['navmenu_check_options'] : array();
 		 	if ( is_array( $menu_locations ) &&  $menu_locations != array() ) { // 2.8.6 - wp 3.6
 		 	?>
 		 	<fieldset class="box leftbox">
 				<?php _e('Choose location(s) of nav menu(s) where languages list will be automatically inserted. For each location, choose the type of list. Experts can create their own list by using api (hook) available in plugin.','xili-language'); ?>
+				<br><strong><?php printf( __("Since version 2.8.8, it is possible to insert the languages list anywhere in the navigation menu via the <a href=\"%s\" title=\"Menu Items definition\">Appearance Menus Builder</a> (drag and drop method).",'xili-language'), "nav-menus.php") ; ?></strong>
 				
 			</fieldset>
 		 	<fieldset class="box rightbox">
 			<?php
-			if ( $this->this_has_filter('xl_language_list') ) {	// is list of options described
+			if ( $this->this_has_external_filter('xl_language_list') ) {	// is list of options described
 				$this->langs_list_options = array();
 				do_action( 'xili_language_list_options', $theoption); // update the list of external action
 			}	
@@ -1977,15 +2507,15 @@ class xili_language_admin extends xili_language {
 						$checked = '';
 						
 				?>
-				<tr><th style="text-align:left;"><label for="xili_navmenu_check_option_<?php echo $menu_location; ?>" class="selectit"><input id="xili_navmenu_check_option_<?php echo $menu_location; ?>" name="xili_navmenu_check_option_<?php echo $menu_location; ?>" type="checkbox" value="enable"  <?php echo $checked; ?> /> <?php echo $menu_location; ?></label>&nbsp;<?php echo ( 0 != $location_id) ? '' : '<abbr title="menu location without content" class="red-alert"> (?) </abbr>' ; ?> 
+				<tr><th style="text-align:left;"><label for="xili_navmenu_check_option_<?php echo $menu_location; ?>" class="selectit"><input id="xili_navmenu_check_option_<?php echo $menu_location; ?>" name="xili_navmenu_check_option_<?php echo $menu_location; ?>" type="checkbox" value="enable"  <?php echo $checked; ?> /> <?php echo $menu_location; ?></label>&nbsp;<?php echo ( has_nav_menu ( $menu_location ) ) ? '' : '<abbr title="menu location without content" class="red-alert"> (?) </abbr>' ; ?> 
 				</th><td><label for="xili_navmenu_check_optiontype_<?php echo $menu_location; ?>"><?php _e('Type','xili-language' ) ?>:
 				<select name="xili_navmenu_check_optiontype_<?php echo $menu_location; ?>" id="xili_navmenu_check_optiontype_<?php echo $menu_location; ?>">
 				<?php
 				if ( $this->langs_list_options == array() ) {
 						echo '<option value="" >default</option>';
 				} else {
-					$subtitle = '';
-					foreach ($this->langs_list_options as $typeoption) {
+					$subtitle = ''; 
+					foreach ($this->langs_list_options as $typeoption) { 
 						if ( false !== strpos( $typeoption[0], 'navmenu' ) ) {
 							$seltypeoption = ( isset( $this->xili_settings['navmenu_check_options'][$menu_location]['navtype']) ) ? $this->xili_settings['navmenu_check_options'][$menu_location]['navtype'] : "";
 							if ( $seltypeoption == $typeoption[0] ) $subtitle = $typeoption[2] ; // 2.8.6
@@ -1998,6 +2528,8 @@ class xili_language_admin extends xili_language {
 				
 				</select></label>
 				<?php
+				$point = $this->has_languages_list_menu ( $menu_location );
+				if ( $point != 0 ) echo '<br />&nbsp; <span class="red-alert">' . __('This menu location contains a list insertion point !','xili-language') . '</span>'; //  && $checked != ''
 				if ( $subtitle != '' ) echo '<br /><span id="title_xili_navmenu_check_optiontype_'.$menu_location.'" ><em>' . $subtitle . '</em></span>';
 				?>
 				</td></tr>
@@ -2051,7 +2583,7 @@ class xili_language_admin extends xili_language {
 	 					foreach ( $menu_locations as $menu_location => $location_id ) { 
 	 						$args= ( isset ( $selected_page_menu_locations[$menu_location]['args'] ) ) ? $selected_page_menu_locations[$menu_location]['args'] : "";
 	 						?>
-	 						<tr><th style="text-align:left;"><label for="xili_navmenu_check_option_page_<?php echo $menu_location; ?>" class="selectit"><input id="xili_navmenu_check_option_page_<?php echo $menu_location; ?>" name="xili_navmenu_check_option_page_<?php echo $menu_location; ?>" type="checkbox" value="enable"  <?php echo checked ( ( isset ( $selected_page_menu_locations[$menu_location]['enable'] )  ) ? $selected_page_menu_locations[$menu_location]['enable'] : '' , 'enable' ) ; ?> /> <?php echo $menu_location; ?></label>&nbsp;&nbsp;<?php echo ( 0 != $location_id) ? '' : '<abbr title="menu location without content" class="red-alert"> (?) </abbr>' ; ?> 
+	 						<tr><th style="text-align:left;"><label for="xili_navmenu_check_option_page_<?php echo $menu_location; ?>" class="selectit"><input id="xili_navmenu_check_option_page_<?php echo $menu_location; ?>" name="xili_navmenu_check_option_page_<?php echo $menu_location; ?>" type="checkbox" value="enable"  <?php echo checked ( ( isset ( $selected_page_menu_locations[$menu_location]['enable'] )  ) ? $selected_page_menu_locations[$menu_location]['enable'] : '' , 'enable' ) ; ?> /> <?php echo $menu_location; ?></label>&nbsp;&nbsp;<?php echo ( has_nav_menu ($menu_location) ) ? '' : '<abbr title="menu location without content" class="red-alert"> (?) </abbr>' ; ?> 
 				</th><td><label for="xili_navmenu_page_args_<?php echo $menu_location; ?>"><?php _e('Args','xili-language' ) ?>:
 					<input id="xili_navmenu_page_args_<?php echo $menu_location; ?>" name="xili_navmenu_page_args_<?php echo $menu_location; ?>" type="text" value="<?php echo $args ?>"  />
 	 			</label></td></tr>
@@ -2196,10 +2728,11 @@ class xili_language_admin extends xili_language {
 	 */
 	function on_sidebox_uninstall_content ( $data ) {
 		extract( $data );
+		$delete = ( is_multisite() ) ? 'delete_this' : 'delete';
 	?>
 	<p class="red-alert"><?php echo $this->admin_messages['alert']['plugin_deinstalling']; ?></p>
 	<label for="delete_settings">
-			<input type="checkbox" id="delete_settings" name="delete_settings" value="delete" <?php if( $this->xili_settings['delete_settings']=='delete') echo 'checked="checked"' ?> />&nbsp;<?php _e("Delete DB plugin's datas",'xili-language') ; ?>
+			<input type="checkbox" id="delete_settings" name="delete_settings" value="<?php echo $delete ?>" <?php if( in_array ( $this->xili_settings['delete_settings'] , array ( 'delete_this', 'delete' ) ) ) echo 'checked="checked"' ?> />&nbsp;<?php _e("Delete DB plugin's datas",'xili-language') ; ?>
 	</label>
 	<div class='submit'>
 		<input id='uninstalloption' name='uninstalloption' type='submit' tabindex='6' value="<?php _e('Update','xili-language') ?>" /></div>
@@ -2379,6 +2912,10 @@ class xili_language_admin extends xili_language {
 			echo ".fullwidth { width:97%; }\n";
 			echo ".width23 { width:70% ; }\n";
 			echo ".box { margin:2px; padding:6px 6px; border:1px solid #ccc; } \n";
+			echo ".langbox { margin:2px 2px 6px; padding:0px 6px 6px; border-bottom:1px solid #ccc; } \n";
+			echo ".langbox h4 { color:#333; } \n";
+			echo ".themebox { margin:6px 2px 6px 40px; padding:2px 6px 6px; border:1px solid #ccc; } \n";
+			echo ".themebox legend { font-style:italic; } \n";
 			echo ".hiddenbox {display:none}\n";
 			echo ".rightbox { margin:2px 5px 2px 49%; width:47%;} \n";
 			echo ".leftbox {border:0px; width:45%; float:left;} \n";
@@ -2521,7 +3058,7 @@ class xili_language_admin extends xili_language {
 		    if ($entry != '.' && $entry != '..' && is_dir($fullname)) {
 		      $this->find_files($fullname, $pattern, $callback);
 		    } else if (is_file($fullname) && preg_match($pattern, $entry)) {
-		      call_user_func($callback, $path , $entry);
+		      call_user_func( $callback, $path , $entry );
 		    }
 		  }
  		
@@ -2548,8 +3085,19 @@ class xili_language_admin extends xili_language {
   		} else {
   			$message = '';
   		}
+  		// $this->get_template_directory
+  		
+  		if ( !is_child_theme() ) { 
+  			$theme_directory = $this->get_template_directory;
+  		} elseif ( is_child_theme() ) {
+  			if ( false === strpos ( $path, $this->get_parent_theme_directory . '/' )  )  {  // / to avoid -xili
+  				$theme_directory = $this->get_template_directory; // show child
+  			} else {
+  				$theme_directory = $this->get_parent_theme_directory; // show parent
+  			}
+  		}
   		  		
-  		echo $shortfilename. " (".$this->ossep.str_replace($this->ossep,"",str_replace($this->get_template_directory,'',$path)).") ".$message."<br />";
+  		echo $shortfilename. " (".$this->ossep.str_replace($this->ossep,"",str_replace( $theme_directory, '', $path )).") ".$message."<br />";
 	}
 	
 	
@@ -2628,7 +3176,7 @@ class xili_language_admin extends xili_language {
 	<p class="docinfos" ><?php printf(__( 'This list gathers together the titles and infos about (now and future) linked posts by language. For more info, visit the <a href="%s">wiki</a> website.', 'xili-language' ), $this->wikilink) ; ?></p>
 	<p class="xlversion">©xili-language v. <?php echo XILILANGUAGE_VER; ?></p>
 </div>
-<div class="clearb1"></div>
+<div class="clearb1">&nbsp;</div>
 	  <?php
 	}
 	
@@ -2929,7 +3477,8 @@ class xili_language_admin extends xili_language {
 	function  find_post_script () {
 		wp_enqueue_script( 'wp-ajax-response' );
 		wp_enqueue_script( 'jquery-ui-draggable' );
-		wp_enqueue_script( 'xili-find-post', plugin_dir_url ( $this->file_file ) . 'js/xili-findposts.dev.js','' , XILILANGUAGE_VER );
+		$suffix = defined( 'WP_DEBUG') && WP_DEBUG ? '.dev' : '.min'; // 2.8.8
+		wp_enqueue_script( 'xili-find-post', plugin_dir_url ( $this->file_file ) . 'js/xili-findposts'.$suffix.'.js','' , XILILANGUAGE_VER );
 	}
 	
 	/**
@@ -2948,8 +3497,10 @@ class xili_language_admin extends xili_language {
 	  		$insert_flags = ( $this->xili_settings['external_xl_style'] == "on" );
 		 	echo '<!---- xl css ----->'."\n";
 			echo '<style type="text/css" media="screen">'."\n";
-		 	echo '#msg-states { width:79%;  float:left; overflow:hidden;}'."\n";
+		 	echo '#msg-states { width:79%;  float:left; overflow:hidden; }'."\n";
 		 	echo '#msg-states-comments { width:18.5%; margin-left: 80%; border-left:0px #666 solid;  padding:10px 10px 0;  }'."\n";
+		 	echo ".clearb1 {clear:both; height:1px;} \n"; // 2.8.8
+		 	
 		 	echo '.xlversion {font-size:80%; margin-top:20px; text-align:right;}';
 		 	
 		 	echo '.alert { color:red;}'."\n";
@@ -2957,13 +3508,13 @@ class xili_language_admin extends xili_language {
 		 	echo '.editing { color:#333; background:#fffbcc;}'."\n";
 		 	echo '.abbr_name:hover {border-bottom:1px dotted grey;}'."\n";
 		 	echo '#postslist {width: 100%; border:1px solid grey ;}'."\n";
-		 	echo '#post_state div.inside {overflow:hidden;}'."\n"; // 2.8.4.3
+		 	
 		 	echo '.language {width: 80px;}'."\n";
 		 	echo '.postid {width: 35px;}'."\n";
-		 //echo '.title {width: 54%;}';
+		 
 		 	echo '.status {width: 60px;}'."\n";
 		 	echo '.action {width: 120px;}'."\n";
-		 //	echo '.postsbody { border:1px solid black; }';
+		
 		 	echo '.inputid {width: 40px;}'."\n";
 		 	$lang = $this->get_post_language( $post->ID ) ; //slug
 		 	if (  $this->style_folder == get_stylesheet_directory_uri() ) {
@@ -2981,7 +3532,6 @@ class xili_language_admin extends xili_language {
 			 		echo '.postsbody tr.lang-'. $language->slug .' > th span { display:inline-block; text-indent:-9999px ; height: 20px; }'."\n";
 	 			}
 		 	}
-		 	
 		 	
 		 	echo '</style>'."\n";
 		 
@@ -3276,8 +3826,6 @@ class xili_language_admin extends xili_language {
 			);
 		}
 		
-		//error_log ( '---------'.serialize ( get_current_screen() ));
-		
 		if ( version_compare( $wp_version, '3.5', '<') ) { // 2.8.4.2
 		  	$clone = ( get_current_screen()->base == "media" ) ? true : false ; 
 		} else {
@@ -3359,7 +3907,7 @@ class xili_language_admin extends xili_language {
 				wp_delete_object_term_relationships( $post['ID'], TAXONAME );
 			}	
 		}
-		$clone = $post; //error_log ( serialize ( $post ) ) ;
+		$clone = $post; 
 		unset ($clone['ID']);	
 		if ( isset($attachment['create_clone_attachment_with_language']) && $attachment['create_clone_attachment_with_language'] != 'undefined' ){
 			
@@ -3390,7 +3938,6 @@ class xili_language_admin extends xili_language {
 			// get already linked of cloned
 			$already_linked = array();
 			if ( $meta_values = $wpdb->get_results( $wpdb->prepare( "SELECT meta_value, meta_key FROM $wpdb->postmeta WHERE meta_key LIKE %s AND post_id = %d", QUETAG .'-' . '%', $post['ID']) ) ) {
-				//error_log( serialize ( $meta_values ) );
 				
 				foreach ( $meta_values as $key_val ) {
 					update_post_meta( $key_val->meta_value, QUETAG.'-'.$attachment['create_clone_attachment_with_language'], $cloned_attachment_id );
@@ -3418,7 +3965,7 @@ class xili_language_admin extends xili_language {
 			if ( 'attachment' == $post->post_type ) {
 				$attachment_post_language = get_cur_language( $post_id, 'slug' );
 				// test meta lang
-				$linked_list = $this->translated_in ( $post_id, 'array'); //error_log (serialize($linked_list));
+				$linked_list = $this->translated_in ( $post_id, 'array'); 
 				if ( array()  != $linked_list ) {
 					$this->dont_delete_file = true;
 					// update meta in linked attachments
@@ -3664,13 +4211,14 @@ class xili_language_admin extends xili_language {
 	 * @since 1.8.9
 	 * keep value in hidden input in column see xili_manage_column
 	 * setTimeout mandatory for popup DOM - adapted from http://nerdlife.net/boston-wordpress-meetup-example-code/
+	 * updated 2.8.8 - live replaced by on (jQuery - obsolete)
 	 *
 	 */
 	function quick_edit_add_script () {
 		?>
 		<script type="text/javascript">
 			jQuery(document).ready(function() {
-    			jQuery('a.editinline').live('click', function() {
+    			jQuery('a.editinline').on('click', function() { 
        			var id = inlineEditPost.getId(this);
         		if ( jQuery('#<?php echo QUETAG ?>-' + id ).length ) {
         			var val = jQuery('#<?php echo QUETAG ?>-' + id ).val();
@@ -4146,29 +4694,218 @@ class xili_language_admin extends xili_language {
 					wp_delete_object_term_relationships( $link_id, 'link_'.TAXONAME ); 	
 				}
 	}
+	
+	/**
+	 * Function to manage mo files downloaded from automattic
+	 *
+	 *
+	 */
+	function download_mo_from_automattic( $locale = 'en_US', $version , $theme_name = "", $upgrade = 0  ) {
+				
+		$mofile = WP_LANG_DIR."/$locale.mo";
+
+		// does core file exists in current installation ?
+		if ((file_exists($mofile) && $upgrade == 0 ) || $locale == 'en_US')
+			return true;
+
+		// does language directory exists in current installation ?
+		if (!is_dir(WP_LANG_DIR)) {
+			if (!@mkdir(WP_LANG_DIR))
+				return false;
+		}
+
+		// will first look in tags/ (most languages) then in branches/ (only Greek ?)
+		$automattic_locale_root = 'http://svn.automattic.com/wordpress-i18n/'.$locale;
+		$automattic_locale_root = $automattic_locale_root.'/tags/' ;
+
+	
+		$args = array('timeout' => 30, 'stream' => true);
+		
+		if ( $upgrade != 2 ) { // only core files
+		// try to download the file
+		
+			$resp = wp_remote_get($automattic_locale_root."$version/messages/$locale.mo", $args + array('filename' => $mofile));
+			if (is_wp_error($resp) || 200 != $resp['response']['code'])
+				continue;
+
+			// try to download ms and continents-cities files if exist (will not return false if failed)
+			// with new files introduced in WP 3.4
+			foreach (array('ms', 'continents-cities', 'admin', 'admin-network') as $file) {
+				$url = $automattic_locale_root."$version/messages/$file-$locale.mo";
+				if ( $this->url_exists( $url ) )
+					wp_remote_get( $url, $args + array('filename' => WP_LANG_DIR."/$file-$locale.mo") );
+			}
+		}
+
+				// try to download theme files if exist (will not return false if failed)
+				// FIXME not updated when the theme is updated outside a core update
+		if ( in_array ($theme_name, array('twentyten', 'twentyeleven', 'twentytwelve', 'twentythirteen') ) ) {
+			 $url = $automattic_locale_root."$version/messages/$theme_name/$locale.mo";
+			 if ( $this->url_exists( $url ) )
+				wp_remote_get($url, $args + array('filename' => get_theme_root()."/$theme_name/languages/$locale.mo"));
+		}	
+		return true;
+			
+	}
+	
+	// GlotPress version sub-folder
+	
+	function glotPress_version_folder ( $version ) {
+		$version_parts = explode ( '.', $version );
+		
+		if (  strlen ($version_parts[1]) > 1 ) {
+			
+			$version_folder = 'dev'; //'3.5.x'; // test instead dev for 3.6
+			
+		} else {
+			
+			$version_folder = $version_parts[0] . '.' . $version_parts[1] . '.x' ;
+		}
+
+		return $version_folder ;
+		
+	}
+	
+	/**
+	 * Download from translation.wordpress.org
+	 *
+	 */
+	function download_mo_from_translate_wordpress( $locale = 'en_US', $version , $theme_name = "", $upgrade = 0  ) {
+	
+		$locale_subfolder = $this->check_versions_in_glotpress ( $locale, $version ) ; 
+		// return subfolder at WP (en, en-ca, fr, zn-tw…)
+		if ( $locale_subfolder === false ) return false;
+		
+		$version_folder = $this->glotPress_version_folder ( $version ) ;
+		
+		$mofile = WP_LANG_DIR."/$locale.mo";
+
+		// does file exists in current installation ?
+		if ((file_exists($mofile) && $upgrade == 0 ) || $locale == 'en_US')
+			return true;
+
+		// does language directory exists in current installation ?
+		if (!is_dir(WP_LANG_DIR)) {
+			if (!@mkdir(WP_LANG_DIR))
+				return false;
+		}
+
+		// will first look in tags/ (most languages) then in branches/ (only Greek ?)
+		$translate_wordpress_root = 'http://translate.wordpress.org/projects/wp/'.$version_folder .'/';
+		
+		$suffix = 'mo'; // tested with po
+		
+		// 'http://translate.wordpress.org/projects/wp/3.5.x/admin/fr/default/export-translations'
+		// GET ( sent by verified jquery in above url)
+		
+		$sub_folder_array = array (
+			'default' => '%lang%/default', 
+			'admin' => 'admin/%lang%/default',
+			'admin-network' => 'admin/network/%lang%/default',
+			'continents-cities' => 'cc/%lang%/default',
+		);
+		if ( $upgrade != 2 ) { // only theme files
+			foreach ( $sub_folder_array as $prename => $one_subfolder ) {
+				
+				$url = $translate_wordpress_root . str_replace ( '%lang%', $locale_subfolder, $one_subfolder ) . '/export-translations?format='.$suffix ;
+			
+				$fileprename = ( $prename != 'default' ) ? $prename . '-' : '' ; 
+				$request = wp_remote_get( $url , array( 'filename' => WP_LANG_DIR."/".$fileprename.$locale.".".$suffix , 'timeout' => 15, 'stream' => true, 'body' => array() ) );
+				
+				if ( 200 != wp_remote_retrieve_response_code( $request ) ){
+					unlink( WP_LANG_DIR."/".$fileprename.$locale.".".$suffix );
+					// see /wp-includes/file.php
+				}
+			}
+		}
+		
+		if ( in_array ($theme_name, array('twentyten', 'twentyeleven', 'twentytwelve', 'twentythirteen') ) ) {
+		
+		// thanks for format  - markoheijnen - http://buddypress.trac.wordpress.org/raw-attachment/ticket/4857/translatecode-003.php, http://buddypress.trac.wordpress.org/attachment/ticket/4857/translatecode-003.php
+		
+		// temp patch for twentythirteen 20130503 - fixed 20130504 via polyglots blog
+			//$theme_subfolder = ( $theme_name == 'twentythirteen' ) ? 'twenty-thirteen' : $theme_name ;
+			
+			$url = $translate_wordpress_root . $theme_name . '/' . $locale_subfolder . '/default/export-translations?format='.$suffix ;
+			
+			$request = wp_remote_get( $url , array( 'filename' => get_theme_root()."/$theme_name/languages/$locale.".$suffix , 'timeout' => 15, 'stream' => true, 'body' => array() ) );
+			
+			
+			if ( 200 != wp_remote_retrieve_response_code( $request ) ){
+				@unlink( get_theme_root()."/$theme_name/languages/$locale.".$suffix );
+				// see /wp-includes/file.php
+			}
+		
+		}
+		return true;
+	}
+	
+	function url_exists($url) {
+        //if (!$fp = curl_init($url)) return false;
+        //return true;
+        $file = $url;
+		$file_headers = @get_headers($file);
+		if( $file_headers[0] == 'HTTP/1.1 404 Not Found' ) {
+    		return false;
+		} else {
+		    return true;
+		}
+    }
 
 	/**
 	 * Contextual help
 	 *
 	 * @since 1.7.0
-	 * @updated 2.4.1, 2.6.2
+	 * @updated 2.4.1, 2.6.2, 2.8.8
 	 */
 	 function add_help_text( $contextual_help, $screen_id, $screen ) { 
-	  	if ( in_array ( $screen->id , array ('settings_page_language_page', 'settings_page_language_front_set',  'settings_page_language_expert','settings_page_language_support') ) ) {
+	 	
+	 	if ( $screen->id == 'nav-menus' ) { // 2.8.8
+	 		$wikilink = $this->wikilink . '/index.php/Xili-language:_languages_list_insertion_in_nav_menu';
+	 		$to_remember = 
+	      '<p><strong>' . __('Things to remember to insert Languages list:','xili-language') . '</strong></p>' .
+	      '<ul>' .
+	      '<li>' . __('Checking radio button, choose type of languages list to insert.','xili-language') . '</li>' .
+	      '<li>' . __('Click the button - Add to Menu -.','xili-language') . '</li>' .
+	      '<li>' . __('Drag and drop to the desired place.','xili-language') . '</li>' .
+	      '<li>' . __('Do not modify content of url and label. These infos will be used to generate the final languages list according position in website during navigation.','xili-language') . '</li>' .
+	      '</ul>'.
+	      '<p>' . sprintf(__('<a href="%s" target="_blank">Xili Wiki Documentation</a>','xili-language'), $wikilink ) . '</p>'  ;
+	 		
+	 		$screen->add_help_tab( array(
+ 				'id'      => 'xili-language-list',
+				'title'   => sprintf( __('About %s Languages list', 'xili-language'), '[©xili]'),
+				'content' => $to_remember,
+		  ));
+	 	
+	 	}
+	 	
+	 	
+	  	if ( in_array ( $screen->id , array ('settings_page_language_page', 'settings_page_language_front_set',  'settings_page_language_expert', 'settings_page_language_files', 'settings_page_language_support') ) ) {
 	  		
 	  		$page_title[ 'settings_page_language_page' ] = __( 'Languages page', 'xili-language' ) ;
 	  		$page_title[ 'settings_page_language_front_set' ] = __( 'Languages front-end settings', 'xili-language' ) ;
 	  		$page_title[ 'settings_page_language_expert' ] = __( 'Settings for experts', 'xili-language' ) ;
+	  		$page_title[ 'settings_page_language_files' ] = __( 'Managing MO files', 'xili-language' ) ;
 	  		$page_title[ 'settings_page_language_support' ] = __( 'xili-language support', 'xili-language' ) ;
 	  		
 	  		$line[ 'settings_page_language_page' ] = __('In this page, the list of languages used by the multilingual website is set.','xili-language');
 	  		$line[ 'settings_page_language_front_set' ] = __('Here, you decide what happens when a visitor arrives on the website homepage with his browser commonly set according to his mother language. Xili-language offers multiple ways according your content strategy.','xili-language');
 	  		$line[ 'settings_page_language_expert' ] = __('This sub-page will present how to set navigation menu in multilingual context with xili-language.','xili-language');
+	  		
+	  		// list
+	  		$line[ 'settings_page_language_files' ] =  __( 'This sub-page will help to import MO files from WordPress SVN.', 'xili-language' ) . '</li>' .
+	  		'<li>' . __('Be aware that, before to be displayed, this page scans datas from servers, be patient, it takes time.','xili-language') . '</li>' .
+	  		'<li>' . __('If the theme is a child theme, in the box containing infos about theme, a list of languages from the parent theme is shown.','xili-language') . '</li>' .
+	  		'<li>' . sprintf ( __('If the option %s is checked, available translations from child are merged with those from parent.','xili-language'), "<em>" . __( 'MO merging between parent and child','xili-language') . "</em>" ) . '</li>';
+	  		;
+	  		
 	  		$line[ 'settings_page_language_support' ] = __('This form to email to dev.xiligroup.com team your observations.','xili-language');
 	  		
 	  		$wiki_page[ 'settings_page_language_page' ] = '/index.php/Xili-language_settings:_the_list_of_languages,_line_by_line';
 	  		$wiki_page[ 'settings_page_language_front_set' ] = '/index.php/Xili-language_settings:_Home_page_and_more...';
 	  		$wiki_page[ 'settings_page_language_expert' ] = '/index.php/Xili-language:_navigation_menu';
+	  		$wiki_page[ 'settings_page_language_files' ] = '/index.php/Xili-language:_managing_mo_files';
 	  		$wiki_page[ 'settings_page_language_support' ] = '/index.php/Xili-language_settings:_Assistance,_support_form';
 	  		
 	   	  $this_tab =
